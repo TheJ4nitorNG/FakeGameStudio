@@ -1,0 +1,542 @@
+-- =========================================
+-- Fake Game Studio - Supabase/Postgres Schema
+-- =========================================
+
+-- Extensions (slug/uuid helpers)
+create extension if not exists "pgcrypto";
+
+-- =========
+-- Enums
+-- =========
+do $$ begin
+  create type studio_status as enum ('active', 'acquired', 'bankrupt', 'missing', 'hibernating');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type game_status as enum ('prototype', 'in_development', 'early_access', 'released', 'canceled', 'legendary');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type post_type as enum ('devlog', 'patch_notes', 'announcement', 'apology', 'cancellation', 'postmortem');
+exception
+  when duplicate_object then null;
+end $$;
+
+-- =========
+-- Helpers
+-- =========
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- Slugify helper (simple, predictable)
+create or replace function public.slugify(input text)
+returns text
+language sql
+immutable
+as $$
+  select trim(both '-' from regexp_replace(lower(coalesce(input,'')), '[^a-z0-9]+', '-', 'g'));
+$$;
+
+-- =========
+-- Profiles (optional but useful)
+-- =========
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  handle text unique,
+  avatar_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create trigger trg_profiles_updated_at
+before update on public.profiles
+for each row execute function public.set_updated_at();
+
+-- =========
+-- Studios
+-- =========
+create table if not exists public.studios (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+
+  name text not null,
+  slug text not null,
+  bio text,
+  founding_year int check (founding_year between 1970 and 2100),
+  status studio_status not null default 'active',
+
+  logo_url text,
+  banner_url text,
+
+  is_public boolean not null default true,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint studios_owner_slug_unique unique (owner_id, slug),
+  constraint studios_owner_name_unique unique (owner_id, name)
+);
+
+create index if not exists idx_studios_owner on public.studios(owner_id);
+create index if not exists idx_studios_public on public.studios(is_public);
+create index if not exists idx_studios_slug on public.studios(slug);
+
+create trigger trg_studios_updated_at
+before update on public.studios
+for each row execute function public.set_updated_at();
+
+-- Auto-fill slug on insert/update if empty
+create or replace function public.studios_fill_slug()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.slug is null or length(trim(new.slug)) = 0 then
+    new.slug := public.slugify(new.name);
+  else
+    new.slug := public.slugify(new.slug);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_studios_fill_slug on public.studios;
+create trigger trg_studios_fill_slug
+before insert or update of name, slug on public.studios
+for each row execute function public.studios_fill_slug();
+
+-- =========
+-- Games
+-- =========
+create table if not exists public.games (
+  id uuid primary key default gen_random_uuid(),
+  studio_id uuid not null references public.studios(id) on delete cascade,
+
+  title text not null,
+  slug text not null,
+
+  genre text,
+  platforms text[],            -- e.g. {'PC','PS5','Switch'}
+  release_year int check (release_year between 1970 and 2100),
+  tagline text,
+  description text,
+
+  status game_status not null default 'in_development',
+  cover_url text,
+
+  is_public boolean not null default true,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint games_studio_slug_unique unique (studio_id, slug),
+  constraint games_studio_title_unique unique (studio_id, title)
+);
+
+create index if not exists idx_games_studio on public.games(studio_id);
+create index if not exists idx_games_public on public.games(is_public);
+create index if not exists idx_games_slug on public.games(slug);
+create index if not exists idx_games_status on public.games(status);
+
+create trigger trg_games_updated_at
+before update on public.games
+for each row execute function public.set_updated_at();
+
+create or replace function public.games_fill_slug()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.slug is null or length(trim(new.slug)) = 0 then
+    new.slug := public.slugify(new.title);
+  else
+    new.slug := public.slugify(new.slug);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_games_fill_slug on public.games;
+create trigger trg_games_fill_slug
+before insert or update of title, slug on public.games
+for each row execute function public.games_fill_slug();
+
+-- =========
+-- Posts (belongs to either a Studio OR a Game)
+-- =========
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+
+  studio_id uuid references public.studios(id) on delete cascade,
+  game_id uuid references public.games(id) on delete cascade,
+
+  author_id uuid not null references auth.users(id) on delete cascade,
+
+  type post_type not null default 'devlog',
+  title text not null,
+  body_md text not null,
+
+  version text,                -- mainly for patch notes
+  is_public boolean not null default true,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  -- Exactly one parent: studio OR game
+  constraint posts_one_parent_chk check (
+    (studio_id is not null and game_id is null)
+    or
+    (studio_id is null and game_id is not null)
+  )
+);
+
+create index if not exists idx_posts_studio on public.posts(studio_id);
+create index if not exists idx_posts_game on public.posts(game_id);
+create index if not exists idx_posts_author on public.posts(author_id);
+create index if not exists idx_posts_public_created on public.posts(is_public, created_at desc);
+create index if not exists idx_posts_type on public.posts(type);
+
+create trigger trg_posts_updated_at
+before update on public.posts
+for each row execute function public.set_updated_at();
+
+-- =========
+-- Tags (global dictionary)
+-- =========
+create table if not exists public.tags (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  slug text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.tags_fill_slug()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.slug := public.slugify(new.name);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_tags_fill_slug on public.tags;
+create trigger trg_tags_fill_slug
+before insert or update of name on public.tags
+for each row execute function public.tags_fill_slug();
+
+-- =========
+-- Post <-> Tag join
+-- =========
+create table if not exists public.post_tags (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  tag_id uuid not null references public.tags(id) on delete cascade,
+  primary key (post_id, tag_id)
+);
+
+create index if not exists idx_post_tags_tag on public.post_tags(tag_id);
+
+-- =========
+-- (Optional) Studio members (future-proofing)
+-- If you only want solo-owner studios for now, keep this but don’t use it yet.
+-- =========
+create table if not exists public.studio_members (
+  studio_id uuid not null references public.studios(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'member', -- 'owner','admin','member'
+  created_at timestamptz not null default now(),
+  primary key (studio_id, user_id)
+);
+
+create index if not exists idx_studio_members_user on public.studio_members(user_id);
+
+-- =========================================
+-- Row Level Security (RLS)
+-- =========================================
+alter table public.profiles enable row level security;
+alter table public.studios enable row level security;
+alter table public.games enable row level security;
+alter table public.posts enable row level security;
+alter table public.tags enable row level security;
+alter table public.post_tags enable row level security;
+alter table public.studio_members enable row level security;
+
+-- ---------- Profiles ----------
+drop policy if exists "profiles_read_public" on public.profiles;
+create policy "profiles_read_public"
+on public.profiles for select
+using (true);
+
+drop policy if exists "profiles_insert_self" on public.profiles;
+create policy "profiles_insert_self"
+on public.profiles for insert
+with check (auth.uid() = id);
+
+drop policy if exists "profiles_update_self" on public.profiles;
+create policy "profiles_update_self"
+on public.profiles for update
+using (auth.uid() = id)
+with check (auth.uid() = id);
+
+-- ---------- Studios ----------
+drop policy if exists "studios_read_public" on public.studios;
+create policy "studios_read_public"
+on public.studios for select
+using (is_public = true or owner_id = auth.uid());
+
+drop policy if exists "studios_insert_owner" on public.studios;
+create policy "studios_insert_owner"
+on public.studios for insert
+with check (owner_id = auth.uid());
+
+drop policy if exists "studios_update_owner" on public.studios;
+create policy "studios_update_owner"
+on public.studios for update
+using (owner_id = auth.uid())
+with check (owner_id = auth.uid());
+
+drop policy if exists "studios_delete_owner" on public.studios;
+create policy "studios_delete_owner"
+on public.studios for delete
+using (owner_id = auth.uid());
+
+-- ---------- Games ----------
+-- A game is visible if:
+--  - it is public AND its studio is public, OR
+--  - you own the studio
+drop policy if exists "games_read_public" on public.games;
+create policy "games_read_public"
+on public.games for select
+using (
+  exists (
+    select 1 from public.studios s
+    where s.id = games.studio_id
+    and (
+      s.owner_id = auth.uid()
+      or (games.is_public = true and s.is_public = true)
+    )
+  )
+);
+
+drop policy if exists "games_insert_studio_owner" on public.games;
+create policy "games_insert_studio_owner"
+on public.games for insert
+with check (
+  exists (
+    select 1 from public.studios s
+    where s.id = studio_id and s.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists "games_update_studio_owner" on public.games;
+create policy "games_update_studio_owner"
+on public.games for update
+using (
+  exists (
+    select 1 from public.studios s
+    where s.id = games.studio_id and s.owner_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1 from public.studios s
+    where s.id = games.studio_id and s.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists "games_delete_studio_owner" on public.games;
+create policy "games_delete_studio_owner"
+on public.games for delete
+using (
+  exists (
+    select 1 from public.studios s
+    where s.id = games.studio_id and s.owner_id = auth.uid()
+  )
+);
+
+-- ---------- Posts ----------
+-- Visible if:
+-- - public AND parent (studio/game + studio) is public, OR
+-- - author owns the studio (through studio ownership), OR
+-- - author_id is you (lets you see drafts even if private)
+drop policy if exists "posts_read_rules" on public.posts;
+create policy "posts_read_rules"
+on public.posts for select
+using (
+  author_id = auth.uid()
+  or (
+    is_public = true
+    and (
+      -- Studio post: studio must be public
+      (studio_id is not null and exists (
+        select 1 from public.studios s
+        where s.id = posts.studio_id and s.is_public = true
+      ))
+      -- Game post: game & studio must be public
+      or (game_id is not null and exists (
+        select 1
+        from public.games g
+        join public.studios s on s.id = g.studio_id
+        where g.id = posts.game_id
+          and g.is_public = true
+          and s.is_public = true
+      ))
+    )
+  )
+  or (
+    -- Studio owner can read all posts under their studio/games
+    exists (
+      select 1 from public.studios s
+      where s.owner_id = auth.uid()
+      and (
+        (posts.studio_id is not null and s.id = posts.studio_id)
+        or
+        (posts.game_id is not null and exists (
+          select 1 from public.games g
+          where g.id = posts.game_id and g.studio_id = s.id
+        ))
+      )
+    )
+  )
+);
+
+drop policy if exists "posts_insert_owner_or_author" on public.posts;
+create policy "posts_insert_owner_or_author"
+on public.posts for insert
+with check (
+  author_id = auth.uid()
+  and (
+    (studio_id is not null and exists (
+      select 1 from public.studios s
+      where s.id = studio_id and s.owner_id = auth.uid()
+    ))
+    or
+    (game_id is not null and exists (
+      select 1
+      from public.games g
+      join public.studios s on s.id = g.studio_id
+      where g.id = game_id and s.owner_id = auth.uid()
+    ))
+  )
+);
+
+drop policy if exists "posts_update_owner_or_author" on public.posts;
+create policy "posts_update_owner_or_author"
+on public.posts for update
+using (
+  author_id = auth.uid()
+)
+with check (
+  author_id = auth.uid()
+);
+
+drop policy if exists "posts_delete_owner_or_author" on public.posts;
+create policy "posts_delete_owner_or_author"
+on public.posts for delete
+using (
+  author_id = auth.uid()
+);
+
+-- ---------- Tags ----------
+-- Anyone can read tags; only authenticated users can create new ones (optional)
+drop policy if exists "tags_read_public" on public.tags;
+create policy "tags_read_public"
+on public.tags for select
+using (true);
+
+drop policy if exists "tags_insert_auth" on public.tags;
+create policy "tags_insert_auth"
+on public.tags for insert
+with check (auth.uid() is not null);
+
+-- Only allow updates/deletes to service role by default (no policies for update/delete)
+
+-- ---------- Post Tags ----------
+drop policy if exists "post_tags_read_if_post_visible" on public.post_tags;
+create policy "post_tags_read_if_post_visible"
+on public.post_tags for select
+using (
+  exists (
+    select 1 from public.posts p
+    where p.id = post_tags.post_id
+  )
+);
+
+drop policy if exists "post_tags_write_if_own_post" on public.post_tags;
+create policy "post_tags_write_if_own_post"
+on public.post_tags for insert
+with check (
+  exists (
+    select 1 from public.posts p
+    where p.id = post_id and p.author_id = auth.uid()
+  )
+);
+
+drop policy if exists "post_tags_delete_if_own_post" on public.post_tags;
+create policy "post_tags_delete_if_own_post"
+on public.post_tags for delete
+using (
+  exists (
+    select 1 from public.posts p
+    where p.id = post_id and p.author_id = auth.uid()
+  )
+);
+
+-- ---------- Studio Members (optional) ----------
+drop policy if exists "studio_members_read_owner" on public.studio_members;
+create policy "studio_members_read_owner"
+on public.studio_members for select
+using (
+  exists (
+    select 1 from public.studios s
+    where s.id = studio_members.studio_id and s.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists "studio_members_write_owner" on public.studio_members;
+create policy "studio_members_write_owner"
+on public.studio_members for insert
+with check (
+  exists (
+    select 1 from public.studios s
+    where s.id = studio_id and s.owner_id = auth.uid()
+  )
+);
+
+drop policy if exists "studio_members_delete_owner" on public.studio_members;
+create policy "studio_members_delete_owner"
+on public.studio_members for delete
+using (
+  exists (
+    select 1 from public.studios s
+    where s.id = studio_members.studio_id and s.owner_id = auth.uid()
+  )
+);
+
+-- =========================================
+-- Convenience Views (optional)
+-- =========================================
+-- Public browse feed for posts (already RLS-protected)
+create or replace view public.public_posts_feed as
+select
+  p.*,
+  coalesce(g.title, s.name) as parent_title,
+  case
+    when p.game_id is not null then 'game'
+    else 'studio'
+  end as parent_type
+from public.posts p
+left join public.games g on g.id = p.game_id
+left join public.studios s on s.id = p.studio_id;
