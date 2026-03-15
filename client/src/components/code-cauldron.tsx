@@ -738,23 +738,22 @@ export function CodeCauldron({ projectId, onComplete, onBack }: CodeCauldronProp
         return;
       }
 
-      const solutionKeywords = currentLesson.solution
-        .replace(/\s+/g, " ")
-        .split(/[^a-zA-Z0-9]+/)
-        .filter(w => w.length > 2);
+      // 1. Strip out all code comments so they don't break the comparison
+      const stripComments = (code: string) => code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
 
-      const userKeywords = userCode
-        .replace(/\s+/g, " ")
-        .split(/[^a-zA-Z0-9]+/)
-        .filter(w => w.length > 2);
+      // 2. Normalize the code (remove all spaces, match quotes, make lowercase)
+      const normalize = (code: string) => {
+        return stripComments(code)
+          .replace(/\s+/g, '')
+          .replace(/'/g, '"')
+          .toLowerCase();
+      };
 
-      const matchCount = solutionKeywords.filter(k => 
-        userKeywords.some(uk => uk.toLowerCase() === k.toLowerCase())
-      ).length;
+      const normalizedUserCode = normalize(userCode);
+      const normalizedSolution = normalize(currentLesson.solution);
 
-      const matchPercentage = matchCount / solutionKeywords.length;
-
-      if (matchPercentage >= 0.5) {
+      // 3. Check if the user's cleaned code contains the exact cleaned solution
+      if (normalizedUserCode.includes(normalizedSolution)) {
         setIsCorrect(true);
         setOutput(`Output: Success!\n\n${currentLesson.snark}\n\n${currentLesson.encouragement}`);
         setCompletedLessons(new Set(Array.from(completedLessons).concat(currentLesson.id)));
