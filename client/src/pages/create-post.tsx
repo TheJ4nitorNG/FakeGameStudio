@@ -37,7 +37,7 @@ export default function CreatePost() {
         title: "Published!", 
         description: "Your statement has been released to the angry mobs." 
       });
-      setLocation("/feed"); // Send them back to the feed after posting
+      setLocation("/posts"); // Send them back to the feed after posting
     },
     onError: (err: any) => {
       toast({ 
@@ -58,7 +58,7 @@ export default function CreatePost() {
   return (
     <div className="min-h-screen bg-background py-8">
       <div className="max-w-2xl mx-auto px-4">
-        <Link href="/feed">
+        <Link href="/posts">
           <Button variant="ghost" size="sm" className="gap-2 mb-6">
             <ArrowLeft className="h-4 w-4" />
             Cancel & Retreat
