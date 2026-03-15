@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { FileText, Building2, Gamepad2, Filter, Calendar, Database, Code2, Rocket, Skull, Timer, ArrowLeft } from "lucide-react";
+import { FileText, Building2, Gamepad2, Filter, Calendar, Database, Code2, Rocket, Skull, Timer, ArrowLeft, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -294,10 +294,22 @@ export default function FeedPage() {
 
           <TabsContent value="posts">
             <div className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Filter by disappointment type</span>
+              {/* changed this section to a flex container to put the button on the right */}
+              <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Filter by disappointment type</span>
+                </div>
+                
+                {/* Here is the new button! */}
+                <Link href="/posts/new">
+                  <Button className="gap-2" data-testid="button-new-post">
+                    <Plus className="h-4 w-4" />
+                    Draft Statement (New Post)
+                  </Button>
+                </Link>
               </div>
+
               <div className="flex flex-wrap gap-2">
                 {postTypes.map((type) => (
                   <Button
