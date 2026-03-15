@@ -290,6 +290,29 @@ export async function registerRoutes(
 
   // ============ POSTS ROUTES ============
 
+  // Create a new post
+  app.post("/api/posts", async (req, res) => {
+    try {
+      const { title, type, version, body_md } = req.body;
+      
+      if (!title || !body_md) {
+        return res.status(400).json({ error: "Title and statement body are required" });
+      }
+
+      const result = await pool.query(
+        `INSERT INTO posts (title, type, version, body_md)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [title, type || "devlog", version || null, body_md]
+      );
+      
+      res.json(result.rows[0]);
+    } catch (error: any) {
+      console.error("Database insert failed:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get public feed
   app.get("/api/posts", async (req, res) => {
     try {
