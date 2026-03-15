@@ -14,6 +14,8 @@ import DashboardPage from "@/pages/dashboard";
 import CreatePage from "@/pages/create";
 import ProjectPage from "@/pages/project";
 import NotFound from "@/pages/not-found";
+// 1. Import the new page 
+import CreatePost from "@/pages/create-post"; 
 
 function Router() {
   return (
@@ -26,7 +28,11 @@ function Router() {
       <Route path="/sql" component={Home} />
       <Route path="/react" component={ReactEditorPage} />
       <Route path="/posts" component={FeedPage} />
+      
+      {/* 2. put the 'new' route in above the ':id' route */}
+      <Route path="/posts/new" component={CreatePost} />
       <Route path="/posts/:id" component={PostPage} />
+      
       <Route path="/studios/:slug" component={StudioPage} />
       <Route path="/studios/:studioSlug/games/:gameSlug" component={GamePage} />
       <Route component={NotFound} />
