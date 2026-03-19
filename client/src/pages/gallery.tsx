@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Layout } from "@/components/Layout";
-import { Loader2, Paintbrush, Users, ImageIcon } from "lucide-react";
+import { Loader2, Paintbrush, Users, ImageIcon, ArrowLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 import type { Sprite, Character } from "@shared/schema";
 
 // Custom type since we join the project title in the SQL query
@@ -61,28 +62,38 @@ export default function AssetGallery() {
 
   if (loadingSprites || loadingCharacters) {
     return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        </div>
-      </Layout>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
     );
   }
 
   return (
-    <Layout>
-      <div className="container mx-auto p-6 max-w-6xl">
+    <div className="min-h-screen bg-background pb-12">
+      {/* Banner matching your studio layout */}
+      <div className="h-48 md:h-64 bg-gradient-to-br from-primary/20 to-primary/5 relative">
+        <div className="absolute top-4 left-4">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm" className="gap-2 bg-background/50 backdrop-blur-sm">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 -mt-16 relative z-10">
         <div className="flex items-center gap-4 mb-8">
-          <div className="p-3 bg-primary/10 rounded-xl">
-            <ImageIcon className="w-8 h-8 text-primary" />
+          <div className="w-24 h-24 md:w-32 md:h-32 rounded-lg bg-card border-4 border-background flex items-center justify-center overflow-hidden">
+            <ImageIcon className="w-12 h-12 text-primary" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold">Asset Gallery</h1>
-            <p className="text-muted-foreground">All your beautiful (and highly questionable) creations.</p>
+          <div className="pt-12 md:pt-16">
+            <h1 className="text-3xl md:text-4xl font-bold">Asset Gallery</h1>
+            <p className="text-muted-foreground mt-1">All your beautiful (and highly questionable) creations.</p>
           </div>
         </div>
 
-        <Tabs defaultValue="sprites" className="w-full">
+        <Tabs defaultValue="sprites" className="w-full mt-8">
           <TabsList className="mb-6">
             <TabsTrigger value="sprites" className="gap-2">
               <Paintbrush className="w-4 h-4" />
@@ -174,6 +185,6 @@ export default function AssetGallery() {
           </TabsContent>
         </Tabs>
       </div>
-    </Layout>
+    </div>
   );
 }
