@@ -573,6 +573,21 @@ export async function registerRoutes(
 
   // ============ SPRITES ROUTES ============
 
+  // Get ALL sprites for the gallery
+  app.get("/api/sprites", async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT s.*, p.title as project_title 
+        FROM sprites s
+        JOIN projects p ON s.project_id = p.id
+        ORDER BY s.created_at DESC
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Save sprite
   app.post("/api/projects/:projectId/sprites", async (req, res) => {
     try {
@@ -639,6 +654,21 @@ export async function registerRoutes(
   });
 
   // ============ CHARACTERS ROUTES ============
+
+  // Get ALL characters for the gallery
+  app.get("/api/characters", async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT c.*, p.title as project_title 
+        FROM characters c
+        JOIN projects p ON c.project_id = p.id
+        ORDER BY c.created_at DESC
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Save character
   app.post("/api/projects/:projectId/characters", async (req, res) => {
