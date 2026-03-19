@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { 
   Plus, Rocket, Skull, Timer, Paintbrush, 
-  Gamepad2, Clock, CheckCircle
+  Gamepad2, Clock, CheckCircle, ImageIcon
 } from "lucide-react";
 import type { Project } from "@shared/schema";
 
@@ -116,6 +116,15 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">Your game dev journey (satirized)</p>
           </div>
           <div className="flex items-center gap-2">
+            
+            {/* NEW GALLERY BUTTON HERE */}
+            <Link href="/gallery">
+              <Button variant="outline" size="sm" className="gap-2" data-testid="button-view-gallery">
+                <ImageIcon className="h-4 w-4" />
+                Gallery
+              </Button>
+            </Link>
+
             <Link href="/posts">
               <Button variant="ghost" size="sm" data-testid="button-view-feed">
                 View Feed
