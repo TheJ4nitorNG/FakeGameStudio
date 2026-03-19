@@ -160,7 +160,8 @@ export default function AssetGallery() {
                   >
                     <CardContent className="p-4 bg-muted/30 flex items-center justify-center min-h-[120px]">
                       <div className="group-hover:scale-110 transition-transform">
-                        <SpriteThumbnail pixelData={sprite.pixelData} width={sprite.width} height={sprite.height} scale={4} />
+                        {/* 🐍 SNAKE CASE FIX APPLIED HERE! */}
+                        <SpriteThumbnail pixelData={(sprite as any).pixel_data || sprite.pixelData} width={sprite.width} height={sprite.height} scale={4} />
                       </div>
                     </CardContent>
                     <CardHeader className="p-3 border-t bg-card">
@@ -264,8 +265,9 @@ export default function AssetGallery() {
             </div>
 
             <div className="bg-muted p-8 rounded-xl border shadow-inner overflow-hidden flex items-center justify-center min-w-[256px] min-h-[256px]">
+              {/*  SNAKE CASE FIX APPLIED HERE! */}
               <SpriteThumbnail 
-                pixelData={selectedSprite.pixelData} 
+                pixelData={(selectedSprite as any).pixel_data || selectedSprite.pixelData} 
                 width={selectedSprite.width} 
                 height={selectedSprite.height} 
                 scale={16} 
