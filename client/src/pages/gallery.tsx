@@ -12,8 +12,8 @@ import type { Sprite, Character } from "@shared/schema";
 type SpriteWithProject = Sprite & { project_title: string };
 type CharacterWithProject = Character & { project_title: string };
 
-// The magic thumbnail generator (Now with a scale slider!)
-function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pixelData: string, width?: number, height?: number, scale?: number }) {
+// The magic thumbnail generator (Now Bulletproof!)
+function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pixelData: string | any, width?: number, height?: number, scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -22,29 +22,54 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pi
     if (!ctx) return;
 
     try {
-      const pixels: string[][] = JSON.parse(pixelData);
+      // 1. Handle weird database stringification issues safely
+      let pixels = pixelData;
+      if (typeof pixels === "string") {
+        pixels = JSON.parse(pixels);
+      }
+      if (typeof pixels === "string") {
+        pixels = JSON.parse(pixels); // Catch double-stringification!
+      }
+
+      // 2. Ensure dimensions are treated as numbers (sometimes Postgres returns strings)
+      const numWidth = Number(width);
+      const numHeight = Number(height);
       
-      ctx.clearRect(0, 0, width * scale, height * scale);
+      ctx.clearRect(0, 0, numWidth * scale, numHeight * scale);
       
-      pixels.forEach((row, y) => {
-        row.forEach((color, x) => {
-          if (color) {
+      if (!Array.isArray(pixels)) {
+        console.error("Sprite data is not a valid array!", pixels);
+        return;
+      }
+
+      // 3. Draw the pixels
+      let drawnPixels = 0;
+      pixels.forEach((row: string[], y: number) => {
+        row.forEach((color: string, x: number) => {
+          if (color && typeof color === "string" && color.trim() !== "") {
             ctx.fillStyle = color;
             ctx.fillRect(x * scale, y * scale, scale, scale);
+            drawnPixels++;
           }
         });
       });
+
+      // Failsafe warning in the console if the canvas is literally blank
+      if (drawnPixels === 0) {
+        console.warn("Warning: This sprite has zero colored pixels!");
+      }
+
     } catch (e) {
-      console.error("Failed to parse sprite data", e);
+      console.error("Failed to parse and draw sprite data", e);
     }
   }, [pixelData, width, height, scale]);
 
   return (
     <canvas 
       ref={canvasRef} 
-      width={width * scale} 
-      height={height * scale} 
-      className="mx-auto block bg-[repeating-conic-gradient(#e5e7eb_0_90deg,#fff_90deg_180deg)_0_0/8px_8px] dark:bg-[repeating-conic-gradient(#374151_0_90deg,#1f2937_90deg_180deg)_0_0/8px_8px] rounded"
+      width={Number(width) * scale} 
+      height={Number(height) * scale} 
+      className="mx-auto block bg-[repeating-conic-gradient(#e5e7eb_0_90deg,#fff_90deg_180deg)_0_0/8px_8px] dark:bg-[repeating-conic-gradient(#374151_0_90deg,#1f2937_90deg_180deg)_0_0/8px_8px] rounded shadow-sm"
       style={{ imageRendering: "pixelated" }}
     />
   );
@@ -85,7 +110,7 @@ export default function AssetGallery() {
 
       <div className="max-w-7xl mx-auto px-4 -mt-16 relative z-10">
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-24 h-24 md:w-32 md:h-32 rounded-lg bg-card border-4 border-background flex items-center justify-center overflow-hidden">
+          <div className="w-24 h-24 md:w-32 md:h-32 rounded-lg bg-card border-4 border-background flex items-center justify-center overflow-hidden shadow-lg">
             <ImageIcon className="w-12 h-12 text-primary" />
           </div>
           <div className="pt-12 md:pt-16">
@@ -198,7 +223,7 @@ export default function AssetGallery() {
           onClick={() => setSelectedSprite(null)}
         >
           <div 
-            className="relative bg-card p-6 md:p-8 rounded-2xl max-w-2xl w-full flex flex-col items-center gap-6 shadow-2xl border border-primary/20"
+            className="relative bg-card p-6 md:p-8 rounded-2xl max-w-lg w-full flex flex-col items-center gap-6 shadow-2xl border border-primary/20"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -208,13 +233,13 @@ export default function AssetGallery() {
               <X className="w-5 h-5" />
             </button>
             
-            <div className="text-center">
-              <h2 className="text-2xl font-bold">{selectedSprite.name}</h2>
-              <p className="text-muted-foreground mt-1">From: {selectedSprite.project_title}</p>
+            <div className="text-center w-full pr-8">
+              <h2 className="text-2xl font-bold truncate">{selectedSprite.name}</h2>
+              <p className="text-muted-foreground mt-1 truncate">From: {selectedSprite.project_title}</p>
             </div>
 
-            <div className="bg-muted p-8 rounded-xl border shadow-inner">
-              {/* Here we pass scale=16 to make it massive! */}
+            <div className="bg-muted p-8 rounded-xl border shadow-inner overflow-hidden flex items-center justify-center min-w-[256px] min-h-[256px]">
+              {/* Massive scale for the Lightbox */}
               <SpriteThumbnail 
                 pixelData={selectedSprite.pixelData} 
                 width={selectedSprite.width} 
