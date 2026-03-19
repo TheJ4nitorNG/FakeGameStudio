@@ -1,18 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Paintbrush, Users, ImageIcon, ArrowLeft, X } from "lucide-react";
+import { Loader2, Paintbrush, Users, ImageIcon, ArrowLeft, X, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Sprite, Character } from "@shared/schema";
 
 // Custom type since we join the project title in the SQL query
 type SpriteWithProject = Sprite & { project_title: string };
 type CharacterWithProject = Character & { project_title: string };
 
-// The magic thumbnail generator (Now Bulletproof!)
+// The magic thumbnail generator 
 function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pixelData: string | any, width?: number, height?: number, scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -22,27 +24,20 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pi
     if (!ctx) return;
 
     try {
-      // 1. Handle weird database stringification issues safely
       let pixels = pixelData;
-      if (typeof pixels === "string") {
-        pixels = JSON.parse(pixels);
-      }
-      if (typeof pixels === "string") {
-        pixels = JSON.parse(pixels); // Catch double-stringification!
-      }
+      if (typeof pixels === "string") pixels = JSON.parse(pixels);
+      if (typeof pixels === "string") pixels = JSON.parse(pixels); // Double string catch
 
-      // 2. Ensure dimensions are treated as numbers (sometimes Postgres returns strings)
       const numWidth = Number(width);
       const numHeight = Number(height);
       
       ctx.clearRect(0, 0, numWidth * scale, numHeight * scale);
       
       if (!Array.isArray(pixels)) {
-        console.error("Sprite data is not a valid array!", pixels);
+        console.error("❌ Sprite data is corrupted! Expected an array, but got:", typeof pixels, pixels);
         return;
       }
 
-      // 3. Draw the pixels
       let drawnPixels = 0;
       pixels.forEach((row: string[], y: number) => {
         row.forEach((color: string, x: number) => {
@@ -54,13 +49,12 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pi
         });
       });
 
-      // Failsafe warning in the console if the canvas is literally blank
-      if (drawnPixels === 0) {
-        console.warn("Warning: This sprite has zero colored pixels!");
+      if (drawnPixels === 0 && scale > 4) {
+        console.warn("⚠️ Warning: This sprite has zero colored pixels stored in the database!");
       }
 
     } catch (e) {
-      console.error("Failed to parse and draw sprite data", e);
+      console.error("❌ Failed to parse sprite data. It might be corrupt:", pixelData, e);
     }
   }, [pixelData, width, height, scale]);
 
@@ -76,6 +70,7 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pi
 }
 
 export default function AssetGallery() {
+  const { toast } = useToast();
   const [selectedSprite, setSelectedSprite] = useState<SpriteWithProject | null>(null);
 
   const { data: sprites, isLoading: loadingSprites } = useQuery<SpriteWithProject[]>({
@@ -84,6 +79,21 @@ export default function AssetGallery() {
 
   const { data: characters, isLoading: loadingCharacters } = useQuery<CharacterWithProject[]>({
     queryKey: ["/api/characters"],
+  });
+
+  // The Delete Mutation!
+  const deleteSpriteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/sprites/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sprites"] });
+      toast({ title: "Deleted", description: "Sprite has been sent to the void." });
+      setSelectedSprite(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete", description: error.message, variant: "destructive" });
+    }
   });
 
   if (loadingSprites || loadingCharacters) {
@@ -226,20 +236,34 @@ export default function AssetGallery() {
             className="relative bg-card p-6 md:p-8 rounded-2xl max-w-lg w-full flex flex-col items-center gap-6 shadow-2xl border border-primary/20"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => setSelectedSprite(null)}
-              className="absolute top-4 right-4 p-2 bg-muted hover:bg-muted/80 rounded-full transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {/* Action Buttons Top Right */}
+            <div className="absolute top-4 right-4 flex gap-2">
+              <Button
+                variant="destructive"
+                size="icon"
+                className="h-9 w-9 rounded-full"
+                onClick={() => deleteSpriteMutation.mutate(selectedSprite.id)}
+                disabled={deleteSpriteMutation.isPending}
+                title="Delete Sprite"
+              >
+                {deleteSpriteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-9 w-9 rounded-full"
+                onClick={() => setSelectedSprite(null)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
             
-            <div className="text-center w-full pr-8">
+            <div className="text-center w-full pr-24 pl-8">
               <h2 className="text-2xl font-bold truncate">{selectedSprite.name}</h2>
               <p className="text-muted-foreground mt-1 truncate">From: {selectedSprite.project_title}</p>
             </div>
 
             <div className="bg-muted p-8 rounded-xl border shadow-inner overflow-hidden flex items-center justify-center min-w-[256px] min-h-[256px]">
-              {/* Massive scale for the Lightbox */}
               <SpriteThumbnail 
                 pixelData={selectedSprite.pixelData} 
                 width={selectedSprite.width} 
