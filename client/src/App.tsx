@@ -14,14 +14,15 @@ import DashboardPage from "@/pages/dashboard";
 import CreatePage from "@/pages/create";
 import ProjectPage from "@/pages/project";
 import NotFound from "@/pages/not-found";
-// 1. Import the new page 
 import CreatePost from "@/pages/create-post"; 
+import GalleryPage from "@/pages/gallery"; // <-- 1. Imported the gallery page!
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/gallery" component={GalleryPage} /> {/* <-- 2. Added the gallery route! */}
       <Route path="/create" component={CreatePage} />
       <Route path="/create/:id" component={CreatePage} />
       <Route path="/project/:id" component={ProjectPage} />
@@ -29,7 +30,6 @@ function Router() {
       <Route path="/react" component={ReactEditorPage} />
       <Route path="/posts" component={FeedPage} />
       
-      {/* 2. put the 'new' route in above the ':id' route */}
       <Route path="/posts/new" component={CreatePost} />
       <Route path="/posts/:id" component={PostPage} />
       
