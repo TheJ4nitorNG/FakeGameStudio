@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Paintbrush, Users, ImageIcon, ArrowLeft } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Loader2, Paintbrush, Users, ImageIcon, ArrowLeft, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import type { Sprite, Character } from "@shared/schema";
@@ -12,8 +12,8 @@ import type { Sprite, Character } from "@shared/schema";
 type SpriteWithProject = Sprite & { project_title: string };
 type CharacterWithProject = Character & { project_title: string };
 
-// The magic thumbnail generator
-function SpriteThumbnail({ pixelData, width = 16, height = 16 }: { pixelData: string, width?: number, height?: number }) {
+// The magic thumbnail generator (Now with a scale slider!)
+function SpriteThumbnail({ pixelData, width = 16, height = 16, scale = 4 }: { pixelData: string, width?: number, height?: number, scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -23,28 +23,27 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16 }: { pixelData: st
 
     try {
       const pixels: string[][] = JSON.parse(pixelData);
-      const pixelSize = 4; // Scale it up by 4x for the thumbnail
       
-      ctx.clearRect(0, 0, width * pixelSize, height * pixelSize);
+      ctx.clearRect(0, 0, width * scale, height * scale);
       
       pixels.forEach((row, y) => {
         row.forEach((color, x) => {
           if (color) {
             ctx.fillStyle = color;
-            ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+            ctx.fillRect(x * scale, y * scale, scale, scale);
           }
         });
       });
     } catch (e) {
       console.error("Failed to parse sprite data", e);
     }
-  }, [pixelData, width, height]);
+  }, [pixelData, width, height, scale]);
 
   return (
     <canvas 
       ref={canvasRef} 
-      width={width * 4} 
-      height={height * 4} 
+      width={width * scale} 
+      height={height * scale} 
       className="mx-auto block bg-[repeating-conic-gradient(#e5e7eb_0_90deg,#fff_90deg_180deg)_0_0/8px_8px] dark:bg-[repeating-conic-gradient(#374151_0_90deg,#1f2937_90deg_180deg)_0_0/8px_8px] rounded"
       style={{ imageRendering: "pixelated" }}
     />
@@ -52,6 +51,8 @@ function SpriteThumbnail({ pixelData, width = 16, height = 16 }: { pixelData: st
 }
 
 export default function AssetGallery() {
+  const [selectedSprite, setSelectedSprite] = useState<SpriteWithProject | null>(null);
+
   const { data: sprites, isLoading: loadingSprites } = useQuery<SpriteWithProject[]>({
     queryKey: ["/api/sprites"],
   });
@@ -70,7 +71,7 @@ export default function AssetGallery() {
 
   return (
     <div className="min-h-screen bg-background pb-12">
-      {/* Banner matching your studio layout */}
+      {/* Banner */}
       <div className="h-48 md:h-64 bg-gradient-to-br from-primary/20 to-primary/5 relative">
         <div className="absolute top-4 left-4">
           <Link href="/dashboard">
@@ -117,10 +118,14 @@ export default function AssetGallery() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {sprites.map((sprite) => (
-                  <Card key={sprite.id} className="overflow-hidden group hover:border-primary transition-colors">
+                  <Card 
+                    key={sprite.id} 
+                    className="overflow-hidden group hover:border-primary transition-colors cursor-pointer"
+                    onClick={() => setSelectedSprite(sprite)}
+                  >
                     <CardContent className="p-4 bg-muted/30 flex items-center justify-center min-h-[120px]">
                       <div className="group-hover:scale-110 transition-transform">
-                        <SpriteThumbnail pixelData={sprite.pixelData} width={sprite.width} height={sprite.height} />
+                        <SpriteThumbnail pixelData={sprite.pixelData} width={sprite.width} height={sprite.height} scale={4} />
                       </div>
                     </CardContent>
                     <CardHeader className="p-3 border-t bg-card">
@@ -185,6 +190,45 @@ export default function AssetGallery() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* THE SPRITE LIGHTBOX */}
+      {selectedSprite && (
+        <div 
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in"
+          onClick={() => setSelectedSprite(null)}
+        >
+          <div 
+            className="relative bg-card p-6 md:p-8 rounded-2xl max-w-2xl w-full flex flex-col items-center gap-6 shadow-2xl border border-primary/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedSprite(null)}
+              className="absolute top-4 right-4 p-2 bg-muted hover:bg-muted/80 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="text-center">
+              <h2 className="text-2xl font-bold">{selectedSprite.name}</h2>
+              <p className="text-muted-foreground mt-1">From: {selectedSprite.project_title}</p>
+            </div>
+
+            <div className="bg-muted p-8 rounded-xl border shadow-inner">
+              {/* Here we pass scale=16 to make it massive! */}
+              <SpriteThumbnail 
+                pixelData={selectedSprite.pixelData} 
+                width={selectedSprite.width} 
+                height={selectedSprite.height} 
+                scale={16} 
+              />
+            </div>
+            
+            <div className="flex gap-4 text-sm text-muted-foreground font-mono">
+              <Badge variant="outline">{selectedSprite.width}x{selectedSprite.height} px</Badge>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
