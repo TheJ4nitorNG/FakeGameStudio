@@ -50,7 +50,7 @@ The backend serves as a robust API to handle business logic, data persistence, a
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 This repository is organized into distinct directories to cleanly separate concerns between the frontend, backend, and shared utilities.
 
